@@ -7,14 +7,14 @@ import numpy as np
 import torch
 from tqdm import tqdm
 from models import ImgModule, TxtModule
-from utils import get_dataset, calc_map_k, split_data, agg_func, proto_aggregation
+from utils import get_dataset, calc_map_k, split_data, agg_func, proto_aggregation, p_topK
 from update import LocalImgUpdate, LocalTxtUpdate
 from models.hypernetwork_module import ImageHyperNetwork, TextHyperNetwork
 from collections import OrderedDict
 import os
 import datetime
 opt = DefaultConfig().opt
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def FedProto_taskheter(opt, X, Y, L, user_groups, img_model, txt_model, S, local_F_buffer_dict,
@@ -234,7 +234,7 @@ def FedProto_taskheter(opt, X, Y, L, user_groups, img_model, txt_model, S, local
 
         # valid
         if opt.valid:
-            for idx in range(opt.num_users //3):
+            for idx in range(opt.num_users // 3):
                 img_parameters = OrderedDict(
                     {
                         k: p
@@ -255,24 +255,29 @@ def FedProto_taskheter(opt, X, Y, L, user_groups, img_model, txt_model, S, local
                 )
                 img_model.load_state_dict(img_parameters)
                 txt_model.load_state_dict(txt_parameters)
-                mapi2t, mapt2i = valid(img_model, txt_model, query_x, retrieval_x, query_y, retrieval_y,
-                                       query_L, retrieval_L)
+                result['topki2t'] = []
+                result['topkt2i'] = []
+                mapi2t, mapt2i, topki2t, topkt2i = valid(img_model, txt_model, query_x, retrieval_x, query_y, retrieval_y, query_L, retrieval_L)
                 print('...round: %3d, valid MAP: MAP(i->t): %3.4f, MAP(t->i): %3.4f' % (round + 1, mapi2t, mapt2i))
+                print(topki2t)
+                print(topkt2i)
                 result['mapi2t'][idx].append(mapi2t)
                 result['mapt2i'][idx].append(mapt2i)
                 if mapt2i >= max_mapt2i[idx] and mapi2t >= max_mapi2t[idx]:
                     max_mapi2t[idx] = mapi2t
                     max_mapt2i[idx] = mapt2i
-                    datasetName = opt.data_path.split('/')[2]
-                    iid_unequal = 'iid' if opt.iid else 'noniid_unequal' if opt.unequal else 'noniid_equal'
-                    if not os.path.exists('checkpoints/' + iid_unequal + '/layerwise/'):
-                        os.makedirs('checkpoints/' + iid_unequal + '/layerwise/')
-                    img_model.save('checkpoints/' + iid_unequal + '/layerwise/', img_model.module_name + '_'
-                                   + datasetName + '_' + 'layerwise' + '_' + 'S' + str(opt.s_param) + '_'
-                                   + str(opt.max_epoch) + '_' + str(opt.train_ep) + '_' + str(opt.embedding_dim_img) + '_' + str(opt.embedding_dim_txt) + '_' + iid_unequal + '_' + str(opt.bit) + '.pth')
-                    txt_model.save('checkpoints/' + iid_unequal + '/layerwise/', txt_model.module_name + '_'
-                                   + datasetName + '_' + 'layerwise' + '_' + 'S' + str(opt.s_param) + '_'
-                                   + str(opt.max_epoch) + '_' + str(opt.train_ep) + '_' + str(opt.embedding_dim_img) + '_' + str(opt.embedding_dim_txt) + '_' + iid_unequal + '_' + str(opt.bit) + '.pth')
+                    result['topki2t'].append(topki2t)
+                    result['topkt2i'].append(topkt2i)
+                    # datasetName = opt.data_path.split('/')[2]
+                    # iid_unequal = 'iid' if opt.iid else 'noniid_unequal' if opt.unequal else 'noniid_equal'
+                    # if not os.path.exists('checkpoints/' + iid_unequal + '/layerwise/'):
+                    #     os.makedirs('checkpoints/' + iid_unequal + '/layerwise/')
+                    # img_model.save('checkpoints/' + iid_unequal + '/layerwise/', img_model.module_name + '_'
+                    #                + datasetName + '_' + 'layerwise' + '_' + 'S' + str(opt.s_param) + '_'
+                    #                + str(opt.max_epoch) + '_' + str(opt.train_ep) + '_' + str(opt.embedding_dim_img) + '_' + str(opt.embedding_dim_txt) + '_' + iid_unequal + '_' + str(opt.bit) + '.pth')
+                    # txt_model.save('checkpoints/' + iid_unequal + '/layerwise/', txt_model.module_name + '_'
+                    #                + datasetName + '_' + 'layerwise' + '_' + 'S' + str(opt.s_param) + '_'
+                    #                + str(opt.max_epoch) + '_' + str(opt.train_ep) + '_' + str(opt.embedding_dim_img) + '_' + str(opt.embedding_dim_txt) + '_' + iid_unequal + '_' + str(opt.bit) + '.pth')
 
     print('...training procedure finish')
     if opt.valid:
@@ -294,6 +299,41 @@ def FedProto_taskheter(opt, X, Y, L, user_groups, img_model, txt_model, S, local
     img_hypernet.clean_models()
     txt_hypernet.clean_models()
 
+
+
+# def update_hypernetwork(hypernet, client_model_params_list, client_id, diff, opt):
+#     # calculate gradients
+#     hn_grads = torch.autograd.grad(
+#         outputs=list(client_model_params_list[client_id]),
+#         inputs=hypernet.mlp_parameters() + hypernet.fc_layer_parameters() + hypernet.emd_parameters(),
+#         grad_outputs=list(
+#             map(lambda tup: tup[1], diff.items())
+#         ),
+#         allow_unused=True,
+#     )
+#     mlp_grads = hn_grads[: len(hypernet.mlp_parameters())]
+#     fc_grads = hn_grads[
+#                len(hypernet.mlp_parameters()): len(
+#                    hypernet.mlp_parameters() + hypernet.fc_layer_parameters()
+#                )
+#                ]
+#     emd_grads = hn_grads[
+#                 len(hypernet.mlp_parameters() + hypernet.fc_layer_parameters()):
+#                 ]
+
+#     for param, grad in zip(hypernet.fc_layer_parameters(), fc_grads):
+#         if grad is not None:
+#             param.data -= opt.hn_lr * grad
+
+#     for param, grad in zip(hypernet.mlp_parameters(), mlp_grads):
+#         param.data -= opt.hn_lr * grad
+
+#     for param, grad in zip(hypernet.emd_parameters(), emd_grads):
+#         param.data -= opt.hn_lr * grad
+
+#     hypernet.save_hn()
+
+#     return hypernet
 
 def update_hypernetwork(hypernet, client_model_params_list, client_id, diff, opt):
     # Load previous hypernetwork parameters for the client
@@ -435,7 +475,13 @@ def valid(img_model, txt_model, query_x, retrieval_x, query_y, retrieval_y, quer
 
     mapi2t = calc_map_k(qBX, rBY, query_L, retrieval_L)
     mapt2i = calc_map_k(qBY, rBX, query_L, retrieval_L)
-    return mapi2t, mapt2i
+
+    k_list = [1, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+
+    topki2t = p_topK(qBX, rBX, query_L, retrieval_L, k_list)
+    topkt2i = p_topK(qBY, rBY, query_L, retrieval_L, k_list)
+
+    return mapi2t, mapt2i, topki2t, topkt2i
 
 
 def test(**kwargs):

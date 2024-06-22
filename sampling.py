@@ -69,6 +69,8 @@ def noniid(opt, train_label, n_list, k_list):
             user_data = np.concatenate((user_data, idxs[begin: begin + k]), axis=0)
         dict_users[i] = user_data
         classes_list.append(classes)
+
+        # classes里面出现了的类的数量在idxs_class_divided[1]中减1
         for each_class in classes:
             idxs_class_divided[0][each_class] = idxs_class_divided[0][each_class] + 1
             idxs_class_divided[1][each_class] = idxs_class_divided[1][each_class] - 1

@@ -56,6 +56,50 @@ def proto_aggregation(local_protos_list):
 
     return agg_protos_label
 
+
+
+
+# def agg_func(protos):
+#     """
+#     Returns the average of the weights.
+#     """
+
+#     for [label, proto_list] in protos.items():
+#         if len(proto_list) > 1:
+#             proto = 0 * proto_list[0].data
+#             for i in proto_list:
+#                 proto += i.data
+#             protos[label] = proto / len(proto_list)
+#         else:
+#             protos[label] = proto_list[0]
+
+#     return protos
+
+
+# def proto_aggregation(local_protos_list):
+#     agg_protos_label = dict()
+#     for idx in local_protos_list:
+#         local_protos = local_protos_list[idx]
+#         for label in local_protos.keys():
+#             if label in agg_protos_label:
+#                 agg_protos_label[label].append(local_protos[label])
+#             else:
+#                 agg_protos_label[label] = [local_protos[label]]
+
+#     for [label, proto_list] in agg_protos_label.items():
+#         if len(proto_list) > 1:
+#             proto = 0 * proto_list[0].data
+#             for i in proto_list:
+#                 proto += i.data
+#             agg_protos_label[label] = [proto / len(proto_list)]
+#         else:
+#             agg_protos_label[label] = [proto_list[0].data]
+
+#     return agg_protos_label
+
+
+
+
 def get_dataset(opt, n_list, k_list):
     images, tags, labels = load_data(opt.dataset, opt.num_class, opt.data_path)
     X, Y, L = split_data(opt, images, tags, labels)
@@ -114,6 +158,32 @@ def calc_map_k(qB, rB, query_L, retrieval_L, k=None):
     map = map / num_query
     return map
 
+
+
+def calc_hamming_dist(B1, B2):
+    q = B2.shape[1]
+    if len(B1.shape) < 2:
+        B1 = B1.unsqueeze(0)
+    distH = 0.5 * (q - B1.mm(B2.t()))
+    return distH
+
+
+def p_topK(qB, rB, query_label, retrieval_label, K):
+    num_query = query_label.shape[0]
+    p = [0] * len(K)
+    for iter in range(num_query):
+        gnd = (query_label[iter].unsqueeze(0).mm(retrieval_label.t()) > 0).float().squeeze()
+        tsum = torch.sum(gnd)
+        if tsum == 0:
+            continue
+        hamm = calc_hamming_dist(qB[iter, :], rB).squeeze()
+        for i in range(len(K)):
+            total = min(K[i], retrieval_label.shape[0])
+            ind = torch.sort(hamm)[1][:total]
+            gnd_ = gnd[ind]
+            p[i] += gnd_.sum() / total
+    p = torch.Tensor(p) / num_query
+    return p
 
 def split_data(opt, images, tags, labels):
     X = {}
