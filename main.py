@@ -301,40 +301,6 @@ def FedProto_taskheter(opt, X, Y, L, user_groups, img_model, txt_model, S, local
 
 
 
-# def update_hypernetwork(hypernet, client_model_params_list, client_id, diff, opt):
-#     # calculate gradients
-#     hn_grads = torch.autograd.grad(
-#         outputs=list(client_model_params_list[client_id]),
-#         inputs=hypernet.mlp_parameters() + hypernet.fc_layer_parameters() + hypernet.emd_parameters(),
-#         grad_outputs=list(
-#             map(lambda tup: tup[1], diff.items())
-#         ),
-#         allow_unused=True,
-#     )
-#     mlp_grads = hn_grads[: len(hypernet.mlp_parameters())]
-#     fc_grads = hn_grads[
-#                len(hypernet.mlp_parameters()): len(
-#                    hypernet.mlp_parameters() + hypernet.fc_layer_parameters()
-#                )
-#                ]
-#     emd_grads = hn_grads[
-#                 len(hypernet.mlp_parameters() + hypernet.fc_layer_parameters()):
-#                 ]
-
-#     for param, grad in zip(hypernet.fc_layer_parameters(), fc_grads):
-#         if grad is not None:
-#             param.data -= opt.hn_lr * grad
-
-#     for param, grad in zip(hypernet.mlp_parameters(), mlp_grads):
-#         param.data -= opt.hn_lr * grad
-
-#     for param, grad in zip(hypernet.emd_parameters(), emd_grads):
-#         param.data -= opt.hn_lr * grad
-
-#     hypernet.save_hn()
-
-#     return hypernet
-
 def update_hypernetwork(hypernet, client_model_params_list, client_id, diff, opt):
     # Load previous hypernetwork parameters for the client
     # hypernet.load_hn(client_id)
